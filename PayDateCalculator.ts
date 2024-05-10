@@ -1,56 +1,31 @@
-class DueDateCalculator {
+class PayDateCalculator {
   private fundDay: Date;
-  private loopType: string;
-  private directDeposit: boolean;
   private holidays: Date[];
+  private paySpan: string;
+  private payDay: Date;
+  private isDirectDeposit: boolean;
+  private dueDate: Date | null;
+  private loopType: string;
 
   constructor(
     fundDay: Date,
-    loopType: string,
-    directDeposit: boolean,
-    holidays: Date[]
+    holidays: Date[],
+    paySpan: string,
+    payDay: Date,
+    isDirectDeposit: boolean
   ) {
-    this.fundDay = fundDay;
-    this.loopType = loopType;
-    this.directDeposit = directDeposit;
-    this.holidays = holidays;
-  }
-
-  calculateDueDate(): Date {
-    let dueDate = new Date(this.fundDay);
-
-    while (true) {
-      if (this.directDeposit) {
-        if (this.isWeekend(dueDate)) {
-          if (this.loopType === "forward") {
-            dueDate.setDate(dueDate.getDate() + 1);
-            continue;
-          } else if (this.loopType === "reverse") {
-            dueDate.setDate(dueDate.getDate() - 1);
-            continue;
-          }
-        }
-        if (this.isHoliday(dueDate)) {
-          this.loopType = "reverse";
-          continue;
-        }
-      }
-
-      if (dueDate >= this.addDays(this.fundDay, 10)) {
-        return dueDate;
-      }
-
-      dueDate = this.getNextPayDay(dueDate);
-      this.loopType = "forward";
-    }
-  }
-
-  private getNextPayDay(date: Date): Date {
-    return date;
+    this.fundDay = new Date(fundDay);
+    this.holidays = holidays.map((date) => new Date(date));
+    this.paySpan = paySpan;
+    this.payDay = new Date(payDay);
+    this.isDirectDeposit = isDirectDeposit;
+    this.dueDate = null;
+    this.loopType = "FORWARD";
   }
 
   private isWeekend(date: Date): boolean {
-    return date.getDay() === 0 || date.getDay() === 6;
+    const day = date.getDay();
+    return day === 0 || day === 6;
   }
 
   private isHoliday(date: Date): boolean {
@@ -59,17 +34,59 @@ class DueDateCalculator {
     );
   }
 
-  private addDays(date: Date, days: number): Date {
-    const result = new Date(date);
-    result.setDate(result.getDate() + days);
-    return result;
+  private findNextPayDate(date: Date, payDay: Date): Date {
+    let nextPayDate = new Date(payDay);
+    while (nextPayDate <= date) {
+      nextPayDate.setDate(nextPayDate.getDate() + 1);
+    }
+
+    return nextPayDate;
+  }
+
+  private adjustDueDate(): void {
+    if (this.loopType === "FORWARD") {
+      this.dueDate!.setDate(this.dueDate!.getDate() + 1);
+      if (this.isWeekend(this.dueDate!)) {
+        this.adjustDueDate();
+      }
+    } else if (this.loopType === "REVERSE") {
+      this.dueDate!.setDate(this.dueDate!.getDate() - 1);
+      if (this.isWeekend(this.dueDate!)) {
+        this.adjustDueDate();
+      }
+    }
+    if (this.isHoliday(this.dueDate!)) {
+      this.loopType = "REVERSE";
+      this.adjustDueDate();
+    }
+  }
+
+  calculateDueDate(): Date {
+    this.dueDate = new Date(this.fundDay);
+    this.dueDate.setDate(this.fundDay.getDate() + 10);
+
+    if (this.isDirectDeposit) {
+      this.dueDate.setDate(this.dueDate.getDate() + 1);
+      if (this.isWeekend(this.dueDate)) {
+        this.adjustDueDate();
+      }
+    }
+
+    if (this.isWeekend(this.dueDate) || this.isHoliday(this.dueDate)) {
+      this.adjustDueDate();
+    }
+
+    if (this.dueDate < this.payDay) {
+      this.dueDate = this.findNextPayDate(this.dueDate, this.payDay);
+      this.loopType = "FORWARD";
+      if (this.isDirectDeposit) {
+        this.dueDate.setDate(this.dueDate.getDate() + 1);
+        if (this.isWeekend(this.dueDate)) {
+          this.adjustDueDate();
+        }
+      }
+    }
+
+    return this.dueDate!;
   }
 }
-
-// Example usage:
-const fundDay = new Date("2024-05-09");
-const holidays = [new Date("2024-05-13"), new Date("2024-05-20")];
-const calculator = new DueDateCalculator(fundDay, "forward", true, holidays);
-const dueDate = calculator.calculateDueDate();
-
-console.log(dueDate);
